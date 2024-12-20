@@ -1,4 +1,6 @@
 import os
+from datetime import datetime, timedelta
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,7 +10,6 @@ from django.contrib.auth.hashers import make_password, check_password
 from .utils import JWTAuthentication, generate_jwt_tokens,validate_file_extension
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.parsers import MultiPartParser
-
 
 # handle current user
 
@@ -488,32 +489,6 @@ class SALES_TECHNIQUES(APIView):
 
 
 
-    def get(self, request,technique_id=None):
-
-        if technique_id:
-            
-            try:
-                techniques = SalesTechnique.objects.get(id=technique_id)
-                serilizedTechniques = SalesTechniqueSerializor(techniques)
-                return Response({
-                    "data":serilizedTechniques.data
-                }, status=status.HTTP_200_OK)
-            
-            except SalesTechnique.DoesNotExist:
-                return Response(
-                    {
-                        "data" : []
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        else:
-            techniques = SalesTechnique.objects.all()
-            serilizedTechniques = SalesTechniqueSerializor(techniques, many=True)
-            return Response({
-               "data":serilizedTechniques.data
-            },status=status.HTTP_200_OK)
-
     # create sales techniques
     def post(self, request):
         customer = request.user
@@ -573,7 +548,14 @@ class SALES_TECHNIQUES(APIView):
     # upate sales Techniques
     def patch(self,request,technique_id=None):
 
+        current_user = request.user 
+
         if technique_id:
+
+            if hasattr(current_user, 'role') and current_user.role == 'customer':
+                return Response({"message": "Only admin can access this route."}, status=status.HTTP_403_FORBIDDEN)
+            
+
             data = request.data
             try:
                 s_technique = SalesTechnique.objects.get(id=technique_id)
@@ -594,12 +576,18 @@ class SALES_TECHNIQUES(APIView):
                 s_technique.information = data["information"]
             if "status" in data:
                 s_technique.status = data["status"]
-            if "document" in request.FILES:
-                s_technique.document = request.FILES["document"]
             
             s_technique.save()
+
+
+
+            updateT = SalesTechnique.objects.get(id=technique_id)
+            updateTSerializer = SalesTechniqueSerializor(updateT)
             return Response(
-                {"message" : "sales Techniques updated successfully"},
+                {
+                    "message" : "sales Techniques updated successfully",
+                    "data" : updateTSerializer.data
+                 },
                 status=status.HTTP_200_OK
             )
         
@@ -870,9 +858,7 @@ class AdminManageAgents(APIView):
 
     def get(self, request, customer_id:None):
         currentUser = request.user
-        if hasattr(currentUser, 'role') and currentUser.role == 'customer':
-            return Response({"message": "Admin user accessed this endpoint."}, status=status.HTTP_400_BAD_REQUEST)
-
+    
         if customer_id:
             try:
                 agents = Agent.objects.filter(customer=customer_id)
@@ -1172,16 +1158,178 @@ class ManageAgentDocx(APIView):
             return Response({"message": "Agent not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"message": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
+
+
+
+class GetViewSalesTechNiqueByAgent(APIView):
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request, agent_id=None):
+        if agent_id:
+            try:
+                agent = Agent.objects.get(id=agent_id)
+            except Agent.DoesNotExist:
+                return Response({
+                    "message": "invalid agent"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            techniques = SalesTechnique.objects.filter(agent=agent)
+            if techniques.exists():
+                serialized_techniques = SalesTechniqueSerializor(techniques, many=True)
+                return Response({
+                    "data": serialized_techniques.data[0]
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "data": None
+                }, status=status.HTTP_200_OK)  # No techniques, return empty array
+        
+        else:
+            techniques = SalesTechnique.objects.all()
+            serialized_techniques = SalesTechniqueSerializor(techniques, many=True)
+            return Response({
+                "data": serialized_techniques.data
+            }, status=status.HTTP_200_OK)
+        
+
+
+
 
     
 
 
 
+class ManageSalesTechniqueDocuments(APIView):
+    authentication_classes = [JWTAuthentication]
+    # upload file
+    def post(self, request):
+        current_user = request.user
+        
+        # Permission Check
+        if hasattr(current_user, 'role') and current_user.role == 'customer':
+            return Response({"message": "Only admin can access this route."}, status=status.HTTP_403_FORBIDDEN)
+        
+
+
+        sales_tech_id = request.data.get('sales_tech_id')
+        file = request.FILES.get('document')
+
+        if not sales_tech_id:
+            return Response({"message": "sales_tech_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not file:
+            return Response({"message": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        
+        try:
+            salesTech = SalesTechnique.objects.get(id=sales_tech_id)
+
+            # Create a new document record
+            document = SalesTechniquesDocument.objects.create(
+                salesTechnique=salesTech,
+                document=file
+            )
+
+            return Response({
+                "message": "File uploaded successfully",
+                "data": {
+                    "id": document.id,
+                    "document": document.document.name,
+                    "uploaded_at": document.uploaded_at
+                }
+            }, status=status.HTTP_201_CREATED)
+        except Agent.DoesNotExist:
+            return Response({"message": "Sales Technique not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"message": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+    # delete sales technique
+    def delete(self, request, doc_id=None):
+        current_user = request.user
+
+        # Check if the user is not an admin
+        if hasattr(current_user, 'role') and current_user.role == 'customer':
+            return Response({"message": "Only admin can access this route."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Validate if the `doc_id` is provided
+        if not doc_id:
+            return Response({"message": "doc_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Fetch the document using the given doc_id
+            document = SalesTechniquesDocument.objects.get(id=doc_id)
+        except SalesTechniquesDocument.DoesNotExist:
+            # Handle case where the document is not found
+            return Response({"message": "Document not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Save the file path before deleting the document
+        file_path = document.document.path
+
+        # Delete the document from the database
+        document.delete()
+
+        # Remove the file from the storage
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+        return Response({"message": "Document deleted successfully"}, status=status.HTTP_200_OK)
 
 
 
 
 
 
+
+
+
+# ManageChatAgentSide
+class ManageChatAgentSide(APIView):
+    authentication_classes = [JWTAuthentication]
+
+
+    def get(self, request, agent_id=None):
+        try:
+            # Validate required parameters
+            if not agent_id:
+                return Response({"error": "agent_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get the current time in the correct timezone
+            now = timezone.now()
+            today = now.date()  # This will work correctly with timezone-aware dates
+            yesterday = today - timedelta(days=1)
+            seven_days_ago = today - timedelta(days=7)
+
+            # Filter chats by agent
+            chats = Chat.objects.filter(Agent__id=agent_id).order_by('-created_at')
+
+            # Organize chats by date ranges
+            today_chats = chats.filter(created_at__gte=timezone.make_aware(datetime.combine(today, datetime.min.time())),
+                                    created_at__lt=timezone.make_aware(datetime.combine(today + timedelta(days=1), datetime.min.time())))
+            yesterday_chats = chats.filter(created_at__gte=timezone.make_aware(datetime.combine(yesterday, datetime.min.time())),
+                                        created_at__lt=timezone.make_aware(datetime.combine(today, datetime.min.time())))
+            past_week_chats = chats.filter(created_at__gte=timezone.make_aware(datetime.combine(seven_days_ago, datetime.min.time())),
+                                        created_at__lt=timezone.make_aware(datetime.combine(yesterday, datetime.min.time())))
+            older_chats = chats.filter(created_at__lt=timezone.make_aware(datetime.combine(seven_days_ago, datetime.min.time())))
+
+            # Serialize the results
+            serialized_today = ChatSerializer(today_chats, many=True).data
+            serialized_yesterday = ChatSerializer(yesterday_chats, many=True).data
+            serialized_past_week = ChatSerializer(past_week_chats, many=True).data
+            serialized_older = ChatSerializer(older_chats, many=True).data
+
+            return Response({
+                "data": {
+                    "today": serialized_today,
+                    "yesterday": serialized_yesterday,
+                    "past_7_days": serialized_past_week,
+                    "older": serialized_older
+                }
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

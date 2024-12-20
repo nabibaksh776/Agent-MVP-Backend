@@ -51,16 +51,16 @@ class ChatSerializer(serializers.ModelSerializer):
 
 # Sales Techniques Serializer
 class SalesTechniqueSerializor(serializers.ModelSerializer):
-    agent = AgentSerializer(read_only=True)
-    documents = serializers.SerializerMethodField()
-    
+    agent = AgentSerializer(read_only=True)  # Serialize the related agent
+    documents = serializers.SerializerMethodField()  # Custom field to include related documents
+
     class Meta:
         model = SalesTechnique
         fields = "__all__"
-    
+
     def get_documents(self, obj):
-        # Return all documents related to the agent
-        documents = SalesTechniquesDocument.objects.filter(agent=obj)
+        # Query related documents using the ForeignKey field `salesTechnique`
+        documents = SalesTechniquesDocument.objects.filter(salesTechnique=obj)
         return SalesTechniquesDocumentSerializer(documents, many=True).data
 
 

@@ -4,7 +4,7 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import HANDLE_CUSTOMER,LoginCustomer,CREATE_AGENTS,VISITOR_VIEW_CLASS,SALES_TECHNIQUES,CHAT_CLASS,UpdteCustomer,CreateCustomer,ADMIN_MANAGE,HandleCurrentUser,LogoutView,AdminManageAgents,UpdateAgentByAdmin,ManageAgentDocx
+from .views import HANDLE_CUSTOMER,LoginCustomer,CREATE_AGENTS,VISITOR_VIEW_CLASS,SALES_TECHNIQUES,CHAT_CLASS,UpdteCustomer,CreateCustomer,ADMIN_MANAGE,HandleCurrentUser,LogoutView,AdminManageAgents,UpdateAgentByAdmin,ManageAgentDocx,GetViewSalesTechNiqueByAgent,ManageSalesTechniqueDocuments,ManageChatAgentSide
 urlpatterns = [
     path('current_user/', HandleCurrentUser.as_view(), name="createCustomer"),
     path('customer/', HANDLE_CUSTOMER.as_view(), name="createCustomer"),
@@ -18,8 +18,11 @@ urlpatterns = [
     path('visitor/<int:visitor_id>/', VISITOR_VIEW_CLASS.as_view(), name="get_single_visitors"),
     path('sales-techniques/', SALES_TECHNIQUES.as_view(), name="sales_techniques"),
     path('sales-techniques/<int:technique_id>/', SALES_TECHNIQUES.as_view(), name="getSingleSalesTechniques"),
+    path('sales-techniques/agent/<int:agent_id>/', GetViewSalesTechNiqueByAgent.as_view(), name="SalesTechniqueAgentId"),
+    path('sales-techniques/agent/', GetViewSalesTechNiqueByAgent.as_view(), name="SalesTechniqueAgentId"),
     path('chat/', CHAT_CLASS.as_view(), name="chat"),
     path('chat/<int:chat_id>/', CHAT_CLASS.as_view(), name="getchats"),
+    path('getchathistorybyagentid/<int:agent_id>/', ManageChatAgentSide.as_view(), name="ManageChatAgentSide"),
     path('admin/', ADMIN_MANAGE.as_view(), name="admin_manage"),
     path('admin/<int:admin_id>/', ADMIN_MANAGE.as_view(), name="admin_manage"),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
@@ -32,6 +35,8 @@ urlpatterns = [
     path('admin/agents/v2/<int:agent_id>/', UpdateAgentByAdmin.as_view(), name='editAgent'),
     path('admin/agentdocs/v2/<int:doc_id>/', ManageAgentDocx.as_view(), name='manageAgentDocx'),
     path('admin/agentdocs/v2/', ManageAgentDocx.as_view(), name='manageAgentDocx'),
+    path('admin/salestechniquedocs/v2/', ManageSalesTechniqueDocuments.as_view(), name='ManageSalesTechniqueDocuments'),
+    path('admin/salestechniquedocs/v2/<int:doc_id>/', ManageSalesTechniqueDocuments.as_view(), name='ManageSalesTechniqueDocuments'),
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
